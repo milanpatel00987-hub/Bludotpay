@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+    <meta charset="UTF-8">
+    <title>सीक्रेट एडमिन डेस्क</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #1a1a1a; color: #fff; padding: 20px; }
+        h1, h2 { color: #ffcc00; text-align: center; }
+        .section-box { max-width: 900px; margin: 30px auto; background: #222; padding: 20px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
+        .order-card { background: #2a2a2a; border-left: 5px solid #ffcc00; padding: 15px; margin: 15px 0; border-radius: 6px; display: flex; justify-content: space-between; align-items: center;}
+        .details { text-align: left; line-height: 1.6; }
+        .img-preview img { max-width: 140px; border-radius: 6px; border: 2px solid #555; margin: 5px; }
+        .user-list { text-align: left; background: #2a2a2a; padding: 15px; border-radius: 6px; list-style-type: square; max-height: 150px; overflow-y: auto;}
+        .user-list li { margin: 5px 0; color: #00ffcc; font-size: 15px; }
+        .form-group { margin-bottom: 12px; text-align: left; }
+        .form-group label { display: block; font-weight: bold; margin-bottom: 5px; color: #ffcc00; }
+        .form-group input { width: 100%; padding: 10px; border-radius: 5px; border: none; background: #333; color: #fff; font-size: 15px; box-sizing: border-box; }
+        .btn-save { background: #ffcc00; color: #1a1a1a; font-weight: bold; border: none; padding: 12px 20px; border-radius: 5px; cursor: pointer; width: 100%; font-size: 16px; margin-top: 10px; }
+        .btn-save:hover { background: #e6b800; }
+    </style>
+</head>
+<body>
+
+    <h1>🔐 एडमिन कंट्रोल डेस्क (Hidden Panel)</h1>
+
+    <div class="section-box">
+        <h2>⚙️ रेट और वॉलेट मैनेजमेंट पैनल</h2>
+        <div class="form-group">
+            <label>USDT लाइव रेट (INR में):</label>
+            <input type="number" step="0.01" id="inputRate" placeholder="जैसे: 92.50">
+        </div>
+        <div class="form-group">
+            <label>TRC20 Wallet Address:</label>
+            <input type="text" id="inputTrc" placeholder="TRC20 एड्रेस डालें">
+        </div>
+        <div class="form-group">
+            <label>ERC20 Wallet Address:</label>
+            <input type="text" id="inputErc" placeholder="ERC20 एड्रेस डालें">
+        </div>
+        <button class="btn-save" onclick="updateLiveSettings()">बदलाव लागू करें (Save Changes)</button>
+    </div>
+
+    <div class="section-box">
+        <h2>👥 कुल रजिस्टर्ड कस्टमर्स (<span id="userCount">0</span>)</h2>
+        <ul id="usersContainer" class="user-list">लोड हो रहे हैं...</ul>
+    </div>
+
+    <div class="section-box">
+        <h2>💰 प्राप्त हुए पेमेंट ऑर्डर्स</h2>
+        <div id="ordersContainer">ऑर्डर्स लोड हो रहे हैं...</div>
+    </div>
+
+    <script>
+        let adminPin = "";
+        
+        function initAdmin() {
+            adminPin = prompt("सिक्योरिटी एडमिन पिन दर्ज करें:");
+            if (adminPin !== "9988") { 
+                alert("गलत पिन! एक्सेस डिनाइड।");
+                document.body.innerHTML = "<h1 style='color:red; text-align:center;'>Unauthorized Access</h1>";
+            } else {
+                loadDashboardData();
+                loadCurrentSettingsInputs();
+            }
+        }
+
+        async function loadCurrentSettingsInputs() {
+            const res = await fetch('/api/get-settings');
+            const settings = await res.json();
+            document.getElementById('inputRate').value = settings.usdtRate;
+            document.getElementById('inputTrc').value = settings.trcAddress;
+            document.getElementById('inputErc').value = settings.ercAddress;
+        }
+
+        async function updateLiveSettings() {
+            const usdtRate = parseFloat(document.getElementById('inputRate').value);
+            const trcAddress = document.getElementById('inputTrc').value;
+            const ercAddress = document.getElementById('inputErc').value;
+
+            if(!usdtRate || !trcAddress || !ercAddress) return alert("कृपया सभी कॉलम भरें!");
+
+            const res = await fetch('/api/admin/update-settings', {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'x-admin-pin': adminPin
+                },
+                body: JSON.stringify({ usdtRate, trcAddress, ercAddress })
+            });
+
+            if(res.ok) {
+                alert("✅ सेटिंग्स सफलतापूर्वक अपडेट हो गई हैं! अब ग्राहकों को नया डेटा दिखेगा।");
+            } else {
+                alert("अपडेट करने में त्रुटि आई।");
+            }
+        }
+
+        async function loadDashboardData() {
+            const orderRes = await fetch('/api/admin/orders');
+            const orders = await orderRes.json();
+            const ordersContainer = document.getElementById('ordersContainer');
+            ordersContainer.innerHTML = '';
+
+            if(orders.length === 0) {
+                ordersContainer.innerHTML = "<p style='text-align:center; color:#aaa;'>कोई नया ऑर्डर नहीं मिला।</p>";
+            } else {
+                orders.forEach(order => {
+                    const card = document.createElement('div');
+                    card.className = 'order-card';
+                    let qrHtml = order.erupeeQrPath ? `<br><strong>e-Rupee QR:</strong><br><a href="${order.erupeeQrPath}" target="_blank"><img src="${order.erupeeQrPath}" style="max-width:120px;"></a>` : '';
+                    card.innerHTML = `
+                        <div class="details">
+                            <strong>यूजर ईमेल:</strong> ${order.email}<br>
+                            <strong>मात्रा:</strong> <span style="color:#00ffcc; font-weight:bold;">${order.usdt} USDT</span><br>
+                            <strong>पेमेंट मोड:</strong> ${order.method}<br>
+                            <strong>डिटेल्स:</strong> ${order.details}<br>
+                            <strong>समय:</strong> ${new Date(order.time).toLocaleString()}<br>
+                        </div>
+                        <div class="img-preview">
+                            <strong>पेमेंट प्रूफ:</strong><br>
+                            <a href="${order.screenshotPath}" target="_blank"><img src="${order.screenshotPath}"></a>
+                            ${qrHtml}
+                        </div>
+                    `;
+                    ordersContainer.appendChild(card);
+                });
+            }
+
+            const userRes = await fetch('/api/admin/users');
+            const users = await userRes.json();
+            const usersContainer = document.getElementById('usersContainer');
+            document.getElementById('userCount').innerText = users.length;
+            usersContainer.innerHTML = '';
+
+            if(users.length === 0) {
+                usersContainer.innerHTML = "<li>अभी तक किसी कस्टमर ने रजिस्टर नहीं किया है।</li>";
+            } else {
+                users.forEach(user => {
+                    const li = document.createElement('li');
+                    li.innerText = user.email;
+                    usersContainer.appendChild(li);
+                });
+            }
+        }
+
+        initAdmin();
+    </script>
+</body>
+</html>

@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>USDT Exchange Portal</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #121212; color: #fff; margin: 0; padding: 20px; text-align: center; }
+        .container { max-width: 450px; margin: 30px auto; background: #1e1e1e; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+        h2, h3 { color: #00ffcc; }
+        input, select, button { width: 100%; padding: 12px; margin: 10px 0; border-radius: 6px; border: none; box-sizing: border-box; font-size: 16px; }
+        input, select { background: #2d2d2d; color: #fff; }
+        button { background: #00ffcc; color: #121212; font-weight: bold; cursor: pointer; }
+        button:hover { background: #00cc99; }
+        .hidden { display: none; }
+        .rate-box { background: #282828; padding: 15px; border-radius: 8px; font-size: 20px; font-weight: bold; color: #ffcc00; margin-bottom: 15px; }
+        .address-box { background:#282828; padding:12px; margin:15px 0; border-radius:6px; font-size:13px; text-align:left; border-left:4px solid #00ffcc; }
+    </style>
+</head>
+<body>
+
+    <div id="authSection" class="container">
+        <h2 id="authTitle">कस्टमर रजिस्ट्रेशन</h2>
+        <input type="email" id="email" placeholder="ईमेल आईडी दर्ज करें" required>
+        <input type="password" id="password" placeholder="पासवर्ड" required>
+        <button id="authBtn" onclick="handleAuth()">रजिस्टर करें</button>
+        <p style="cursor:pointer; color:#aaa; font-size:14px;" onclick="toggleAuthMode()">पहले से अकाउंट है? लॉगिन करें</p>
+    </div>
+
+    <div id="dashboardSection" class="container hidden">
+        <h2>USDT टू INR एक्सचेंज</h2>
+        <div class="rate-box">आज का फिक्स भाव: 1 USDT = ₹<span id="liveRate">--.--</span> INR</div>
+        
+        <label>बेचने के लिए USDT दर्ज करें (Min: 50):</label>
+        <input type="number" id="usdtAmount" min="50" value="50" oninput="calculateInr()">
+        <p style="text-align: left; color: #00ffcc;">आपको मिलेंगे: ₹<span id="inrAmount">0.00</span></p>
+
+        <label>पेमेंट प्राप्त करने का तरीका चुनें:</label>
+        <select id="paymentMethod" onchange="togglePaymentFields()">
+            <option value="IMPS">IMPS (बैंक ट्रांसफर)</option>
+            <option value="e-Rupee">डिजिटल ई-रूपी (Digital e-Rupee)</option>
+        </select>
+
+        <div id="impsFields">
+            <input type="text" id="bankName" placeholder="बैंक का नाम">
+            <input type="text" id="accNumber" placeholder="अकाउंट नंबर">
+            <input type="text" id="ifscCode" placeholder="IFSC कोड">
+            <input type="text" id="accName" placeholder="अकाउंट होल्डर का नाम">
+        </div>
+
+        <div id="erupeeFields" class="hidden">
+            <input type="text" id="erupeeId" placeholder="ई-रूपी ID (e.g., name@bank)">
+            <label style="display:block; text-align:left; margin-top:10px;">अपना ई-रूपी QR कोड अपलोड करें:</label>
+            <input type="file" id="erupeeQr" accept="image/*">
+        </div>
+
+        <button onclick="goToPaymentStep()">आगे बढ़ें (Next)</button>
+    </div>
+
+    <div id="paymentStepSection" class="container hidden">
+        <h2>USDT ट्रांसफर करें</h2>
+        <p>नीचे दिए गए पते पर USDT भेजें और स्क्रीनशॉट अपलोड करें:</p>
+        
+        <div class="address-box">
+            <strong>TRC20 Wallet Address:</strong><br>
+            <span id="liveTrc" style="color:#00ffcc; word-break:break-all;">लोड हो रहा है...</span>
+            <br><br>
+            <strong>ERC20 Wallet Address:</strong><br>
+            <span id="liveErc" style="color:#00ffcc; word-break:break-all;">लोड हो रहा है...</span>
+        </div>
+
+        <label>ट्रांसफर का स्क्रीनशॉट (Screenshot) अपलोड करें:</label>
+        <input type="file" id="transferScreenshot" accept="image/*" required>
+
+        <button onclick="submitFinalOrder()">ऑर्डर सबमिट करें</button>
+    </div>
+
+    <script>
+        let isLoginMode = false;
+        let currentUsdtRate = 0;
+        let loggedInEmail = "";
+
+        async function loadLiveSettings() {
+            try {
+                const res = await fetch('/api/get-settings');
+                const settings = await res.json();
+                currentUsdtRate = settings.usdtRate;
+                document.getElementById('liveRate').innerText = currentUsdtRate.toFixed(2);
+                document.getElementById('liveTrc').innerText = settings.trcAddress;
+                document.getElementById('liveErc').innerText = settings.ercAddress;
+                calculateInr();
+            } catch(err) {
+                console.error("सेटिंग्स लोड करने में विफल", err);
+            }
+        }
+
+        function toggleAuthMode() {
+            isLoginMode = !isLoginMode;
+            document.getElementById('authTitle').innerText = isLoginMode ? "कस्टमर लॉगिन" : "कस्टमर रजिस्ट्रेशन";
+            document.getElementById('authBtn').innerText = isLoginMode ? "लॉगिन करें" : "रजिस्टर करें";
+        }
+
+        async function handleAuth() {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            if(!email || !password) return alert("कृपया ईमेल और पासवर्ड भरें");
+
+            const endpoint = isLoginMode ? '/api/login' : '/api/register';
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password })
+            });
+            const data = await response.json();
+            
+            if(response.ok) {
+                alert(data.message);
+                loggedInEmail = email;
+                await loadLiveSettings();
+                document.getElementById('authSection').classList.add('hidden');
+                document.getElementById('dashboardSection').classList.remove('hidden');
+            } else {
+                alert(data.message);
+            }
+        }
+
+        function calculateInr() {
+            const usdt = document.getElementById('usdtAmount').value;
+            document.getElementById('inrAmount').innerText = (usdt * currentUsdtRate).toFixed(2);
+        }
+
+        function togglePaymentFields() {
+            const method = document.getElementById('paymentMethod').value;
+            if(method === 'IMPS') {
+                document.getElementById('impsFields').classList.remove('hidden');
+                document.getElementById('erupeeFields').classList.add('hidden');
+            } else {
+                document.getElementById('impsFields').classList.add('hidden');
+                document.getElementById('erupeeFields').classList.remove('hidden');
+            }
+        }
+
+        function goToPaymentStep() {
+            const usdt = parseFloat(document.getElementById('usdtAmount').value);
+            if(usdt < 50 || isNaN(usdt)) return alert("न्यूनतम लिमिट 50 USDT है!");
+            
+            document.getElementById('dashboardSection').classList.add('hidden');
+            document.getElementById('paymentStepSection').classList.remove('hidden');
+        }
+
+        async function submitFinalOrder() {
+            const usdt = document.getElementById('usdtAmount').value;
+            const method = document.getElementById('paymentMethod').value;
+            const screenshotInput = document.getElementById('transferScreenshot');
+
+            if(screenshotInput.files.length === 0) return alert("कृपया पेमेंट का स्क्रीनशॉट अपलोड करें!");
+
+            const formData = new FormData();
+            formData.append('email', loggedInEmail);
+            formData.append('usdt', usdt);
+            formData.append('method', method);
+            formData.append('screenshot', screenshotInput.files[0]);
+
+            if(method === 'IMPS') {
+                formData.append('details', `Bank: ${document.getElementById('bankName').value}, Acc: ${document.getElementById('accNumber').value}, IFSC: ${document.getElementById('ifscCode').value}, Name: ${document.getElementById('accName').value}`);
+            } else {
+                formData.append('details', `e-Rupee ID: ${document.getElementById('erupeeId').value}`);
+                const qrInput = document.getElementById('erupeeQr');
+                if(qrInput.files.length > 0) formData.append('erupeeQr', qrInput.files[0]);
+            }
+
+            const response = await fetch('/api/submit-order', {
+                method: 'POST',
+                body: formData
+            });
+
+            if(response.ok) {
+                alert("✅ Successfully! आपका ऑर्डर सबमिट हो गया है। 30-40 मिनट में वेरिफिकेशन के बाद पेमेंट भेज दी जाएगी।");
+                location.reload();
+            } else {
+                alert("ऑर्डर सबमिट करने में कोई दिक्कत आई।");
+            }
+        }
+    </script>
+</body>
+</html>
